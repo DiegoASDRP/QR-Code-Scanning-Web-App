@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>QR Code Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body.scanned {
+      background-color: green !important;
+      transition: background-color 0.5s ease-in-out;
+    }
+
+    body.detected {
+      background-color: yellow !important;
+      transition: background-color 0.5s ease-in-out;
+    }
+
+    body.error {
+      background-color: red !important;
+      transition: background-color 0.5s ease-in-out;
+    }
+
+    .error-message {
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      text-align: center;
+      margin: 20px 0;
+      padding: 15px;
+      background-color: rgba(0, 0, 0, 0.7);
+      border-radius: 10px;
+    }
+
+    .processing {
+      font-size: 18px;
+      color: #666;
+      text-align: center;
+      margin: 10px 0;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <h2>Scan QR Code</h2>
+  <div id="reader" width="300px"></div>
+  <p id="result"></p>
+  <p id="processing-status" class="processing" style="display: none;">Processing scan...</p>
+
+  <script>
+    // ── CONFIG ─────────────────────────────────────────────────────────────────
+    // GAS web app URL (redeploy after updating Code.gs).
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzAg9_hWbbakZUzTJxXQmYXNN5XsI9zLYIB1LvlSQzlQ4miAXVH55UiRedFLGAICjTd/exec";
+    // A shared secret — must match API_KEY in Code.gs.
+    // Not invisible to determined users, but blocks casual/automated abuse.
+    const API_KEY = "CENSORED_KEY"; // e.g. a random 32-char string
+    // ──────────────────────────────────────────────────────────────────────────
+
+    let scanner;
+    let scanningBlocked = false;
+
+    async function onScanSuccess(decodedText) {
+      if (scanningBlocked) return;
+      scanningBlocked = true;
+
+      document.body.classList.add("detected");
+      document.getElementById("processing-status").style.display = "block";
+      document.getElementById("result").textContent = "Scanned: " + decodedText;
+      scanner.pause();
+
+      try {
+        const res = await fetch(
+          GAS_URL + "?qr=" + encodeURIComponent(decodedText) + "&key=" + encodeURIComponent(API_KEY),
+          { redirect: "follow" }
+        );
+
+        if (!res.ok) throw new Error("Server responded with status " + res.status);
+
+        const data = await res.json();
+
+        document.getElementById("processing-status").style.display = "none";
+        document.body.classList.remove("detected");
+
+        if (data.error) {
+          document.body.classList.add("error");
+          document.getElementById("result").innerHTML =
+            '<div class="error-message">' + data.error + "</div>";
+          setTimeout(() => document.body.classList.remove("error"), 1500);
+        } else {
+          document.body.classList.add("scanned");
+          setTimeout(() => document.body.classList.remove("scanned"), 1500);
+        }
+      } catch (err) {
+        document.getElementById("processing-status").style.display = "none";
+        document.body.classList.remove("detected");
+        document.body.classList.add("error");
+        document.getElementById("result").innerHTML =
+          '<div class="error-message">Error: ' + err.message + "</div>";
+        setTimeout(() => document.body.classList.remove("error"), 1500);
+      }
+
+      setTimeout(() => {
+        scanningBlocked = false;
+        scanner.resume();
+      }, 1500);
+    }
+
+    scanner = new Html5QrcodeScanner("reader", {
+      fps: 30,
+      qrbox: 500,
+      aspectRatio: 1.0,
+      disableFlip: false,
+      rememberLastUsedCamera: true,
+    });
+    scanner.render(onScanSuccess);
+  </script>
+</body>
+</html>
