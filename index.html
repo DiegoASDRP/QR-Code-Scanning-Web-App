@@ -6,17 +6,17 @@
   <style>
     body.scanned {
       background-color: green !important;
-      transition: background-color 0.5s ease-in-out;
+      transition: none;
     }
 
     body.detected {
       background-color: yellow !important;
-      transition: background-color 0.5s ease-in-out;
+      transition: none;
     }
 
     body.error {
       background-color: red !important;
-      transition: background-color 0.5s ease-in-out;
+      transition: none;
     }
 
     .error-message {
@@ -54,6 +54,8 @@
     const API_KEY = "CENSORED_KEY"; // e.g. a random 32-char string
     // ──────────────────────────────────────────────────────────────────────────
 
+    const QR_PREFIX = "26SPExpoGuest-";
+    const MAX_QR_LENGTH = 25;
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const RECENT_SCAN_COOLDOWN_MS = 1500;
     const MAX_RETRIES = 6;
@@ -70,10 +72,13 @@
       if (now - lastSeen < RECENT_SCAN_COOLDOWN_MS) return;
       lastSeenAtByQr[decodedText] = now;
 
+      if (!isValidQr(decodedText)) {
+        flashState("error", "Invalid QR Code format", 1200);
+        return;
+      }
+
       enqueueScan(decodedText);
-      document.body.classList.add("detected");
-      document.getElementById("result").textContent = "Queued: " + decodedText;
-      setTimeout(() => document.body.classList.remove("detected"), 300);
+      flashState("scanned", "Captured: " + decodedText, 300);
       processQueue();
     }
 
@@ -100,7 +105,8 @@
           if (result.ok || result.duplicate) {
             scanQueue.shift();
             saveQueue();
-            showSuccess();
+            document.getElementById("result").textContent =
+              result.duplicate ? "Already saved (retry-safe)." : "Saved.";
             continue;
           }
 
@@ -115,14 +121,15 @@
             // Keep item for eventual consistency, but slow retries after max burst.
             current.retryCount = 0;
             saveQueue();
-            showError((result.error || "Failed to save scan.") + " Retrying...");
+            document.getElementById("result").textContent =
+              (result.error || "Failed to save scan.") + " Retrying...";
             await sleep(3000);
             continue;
           }
 
           scanQueue.shift();
           saveQueue();
-          showError(result.error || "Failed to save scan.");
+          flashState("error", "Error: " + (result.error || "Failed to save scan."), 1200);
           await sleep(800);
         }
       } finally {
@@ -188,22 +195,22 @@
       const statusEl = document.getElementById("processing-status");
       if (pending > 0 || processingQueue) {
         statusEl.style.display = "block";
-        statusEl.textContent = "Pending scans: " + pending;
+        statusEl.textContent = "Syncing... Pending scans: " + pending;
       } else {
-        statusEl.style.display = "none";
+        statusEl.style.display = "block";
+        statusEl.textContent = "All scans saved.";
       }
     }
 
-    function showSuccess() {
-      document.body.classList.add("scanned");
-      setTimeout(() => document.body.classList.remove("scanned"), 500);
+    function flashState(className, message, ms) {
+      document.body.classList.remove("detected", "scanned", "error");
+      document.body.classList.add(className);
+      document.getElementById("result").textContent = message;
+      setTimeout(() => document.body.classList.remove(className), ms);
     }
 
-    function showError(message) {
-      document.body.classList.add("error");
-      document.getElementById("result").innerHTML =
-        '<div class="error-message">Error: ' + message + "</div>";
-      setTimeout(() => document.body.classList.remove("error"), 1500);
+    function isValidQr(value) {
+      return !!value && value.length <= MAX_QR_LENGTH && value.startsWith(QR_PREFIX);
     }
 
     function getRetryDelayMs(retryCount) {
@@ -223,11 +230,13 @@
     }
 
     scanner = new Html5QrcodeScanner("reader", {
-      fps: 30,
-      qrbox: 500,
+      fps: 20,
+      qrbox: { width: 300, height: 300 },
       aspectRatio: 1.0,
-      disableFlip: false,
+      disableFlip: true,
       rememberLastUsedCamera: true,
+      showResultPoints: false,
+      showScanSuccessFeedback: false,
     });
     scanner.render(onScanSuccess);
     processQueue();
