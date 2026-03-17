@@ -54,53 +54,172 @@
     const API_KEY = "CENSORED_KEY"; // e.g. a random 32-char string
     // ──────────────────────────────────────────────────────────────────────────
 
+    const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
+    const RECENT_SCAN_COOLDOWN_MS = 1500;
+    const MAX_RETRIES = 6;
+    const BASE_RETRY_DELAY_MS = 300;
+
     let scanner;
-    let scanningBlocked = false;
+    let processingQueue = false;
+    let lastSeenAtByQr = {};
+    let scanQueue = loadQueue();
 
     async function onScanSuccess(decodedText) {
-      if (scanningBlocked) return;
-      scanningBlocked = true;
+      const now = Date.now();
+      const lastSeen = lastSeenAtByQr[decodedText] || 0;
+      if (now - lastSeen < RECENT_SCAN_COOLDOWN_MS) return;
+      lastSeenAtByQr[decodedText] = now;
 
+      enqueueScan(decodedText);
       document.body.classList.add("detected");
-      document.getElementById("processing-status").style.display = "block";
-      document.getElementById("result").textContent = "Scanned: " + decodedText;
-      scanner.pause();
+      document.getElementById("result").textContent = "Queued: " + decodedText;
+      setTimeout(() => document.body.classList.remove("detected"), 300);
+      processQueue();
+    }
+
+    function enqueueScan(qrValue) {
+      scanQueue.push({
+        qr: qrValue,
+        rid: buildRequestId(),
+        retryCount: 0
+      });
+      saveQueue();
+      updateQueueStatus();
+    }
+
+    async function processQueue() {
+      if (processingQueue || scanQueue.length === 0) return;
+      processingQueue = true;
+      updateQueueStatus();
 
       try {
-        const res = await fetch(
-          GAS_URL + "?qr=" + encodeURIComponent(decodedText) + "&key=" + encodeURIComponent(API_KEY),
-          { redirect: "follow" }
-        );
+        while (scanQueue.length > 0) {
+          const current = scanQueue[0];
+          const result = await sendScan(current);
 
-        if (!res.ok) throw new Error("Server responded with status " + res.status);
+          if (result.ok || result.duplicate) {
+            scanQueue.shift();
+            saveQueue();
+            showSuccess();
+            continue;
+          }
+
+          if (result.retryable) {
+            if (current.retryCount < MAX_RETRIES) {
+              current.retryCount += 1;
+              saveQueue();
+              await sleep(getRetryDelayMs(current.retryCount));
+              continue;
+            }
+
+            // Keep item for eventual consistency, but slow retries after max burst.
+            current.retryCount = 0;
+            saveQueue();
+            showError((result.error || "Failed to save scan.") + " Retrying...");
+            await sleep(3000);
+            continue;
+          }
+
+          scanQueue.shift();
+          saveQueue();
+          showError(result.error || "Failed to save scan.");
+          await sleep(800);
+        }
+      } finally {
+        processingQueue = false;
+        updateQueueStatus();
+      }
+    }
+
+    async function sendScan(item) {
+      try {
+        const params = new URLSearchParams({
+          qr: item.qr,
+          key: API_KEY,
+          rid: item.rid
+        });
+        const res = await fetch(GAS_URL + "?" + params.toString(), { redirect: "follow" });
+
+        if (!res.ok) {
+          return {
+            ok: false,
+            retryable: true,
+            error: "Server responded with status " + res.status
+          };
+        }
 
         const data = await res.json();
-
-        document.getElementById("processing-status").style.display = "none";
-        document.body.classList.remove("detected");
-
-        if (data.error) {
-          document.body.classList.add("error");
-          document.getElementById("result").innerHTML =
-            '<div class="error-message">' + data.error + "</div>";
-          setTimeout(() => document.body.classList.remove("error"), 1500);
-        } else {
-          document.body.classList.add("scanned");
-          setTimeout(() => document.body.classList.remove("scanned"), 1500);
+        if (data.ok || !data.error) {
+          return { ok: true, duplicate: !!data.duplicate };
         }
-      } catch (err) {
-        document.getElementById("processing-status").style.display = "none";
-        document.body.classList.remove("detected");
-        document.body.classList.add("error");
-        document.getElementById("result").innerHTML =
-          '<div class="error-message">Error: ' + err.message + "</div>";
-        setTimeout(() => document.body.classList.remove("error"), 1500);
-      }
 
-      setTimeout(() => {
-        scanningBlocked = false;
-        scanner.resume();
-      }, 1500);
+        return {
+          ok: false,
+          retryable: !!data.retryable || data.code === "BUSY" || data.code === "SERVER_ERROR",
+          error: data.error,
+          duplicate: !!data.duplicate
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          retryable: true,
+          error: "Network error: " + err.message
+        };
+      }
+    }
+
+    function loadQueue() {
+      try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveQueue() {
+      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(scanQueue));
+    }
+
+    function updateQueueStatus() {
+      const pending = scanQueue.length;
+      const statusEl = document.getElementById("processing-status");
+      if (pending > 0 || processingQueue) {
+        statusEl.style.display = "block";
+        statusEl.textContent = "Pending scans: " + pending;
+      } else {
+        statusEl.style.display = "none";
+      }
+    }
+
+    function showSuccess() {
+      document.body.classList.add("scanned");
+      setTimeout(() => document.body.classList.remove("scanned"), 500);
+    }
+
+    function showError(message) {
+      document.body.classList.add("error");
+      document.getElementById("result").innerHTML =
+        '<div class="error-message">Error: ' + message + "</div>";
+      setTimeout(() => document.body.classList.remove("error"), 1500);
+    }
+
+    function getRetryDelayMs(retryCount) {
+      const jitter = Math.floor(Math.random() * 120);
+      return BASE_RETRY_DELAY_MS * Math.pow(2, retryCount - 1) + jitter;
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function buildRequestId() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      return "rid-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     }
 
     scanner = new Html5QrcodeScanner("reader", {
@@ -111,6 +230,7 @@
       rememberLastUsedCamera: true,
     });
     scanner.render(onScanSuccess);
+    processQueue();
   </script>
 </body>
 </html>
