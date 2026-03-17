@@ -57,6 +57,8 @@
     const QR_PREFIX = "26SPExpoGuest-";
     const MAX_QR_LENGTH = 25;
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
+    const DETECT_FLASH_MS = 90;
+    const CAPTURE_FLASH_MS = 280;
     const RECENT_SCAN_COOLDOWN_MS = 1500;
     const MAX_RETRIES = 6;
     const BASE_RETRY_DELAY_MS = 300;
@@ -64,6 +66,8 @@
     let scanner;
     let processingQueue = false;
     let lastSeenAtByQr = {};
+    let feedbackStepTimer = null;
+    let feedbackClearTimer = null;
     let scanQueue = loadQueue();
 
     async function onScanSuccess(decodedText) {
@@ -78,7 +82,7 @@
       }
 
       enqueueScan(decodedText);
-      flashState("scanned", "Captured: " + decodedText, 300);
+      showCaptureFeedback();
       processQueue();
     }
 
@@ -105,8 +109,6 @@
           if (result.ok || result.duplicate) {
             scanQueue.shift();
             saveQueue();
-            document.getElementById("result").textContent =
-              result.duplicate ? "Already saved (retry-safe)." : "Saved.";
             continue;
           }
 
@@ -121,8 +123,6 @@
             // Keep item for eventual consistency, but slow retries after max burst.
             current.retryCount = 0;
             saveQueue();
-            document.getElementById("result").textContent =
-              (result.error || "Failed to save scan.") + " Retrying...";
             await sleep(3000);
             continue;
           }
@@ -156,7 +156,7 @@
         }
 
         const data = await res.json();
-        if (data.ok || !data.error) {
+        if ((data.ok && data.accepted) || data.duplicate) {
           return { ok: true, duplicate: !!data.duplicate };
         }
 
@@ -195,10 +195,10 @@
       const statusEl = document.getElementById("processing-status");
       if (pending > 0 || processingQueue) {
         statusEl.style.display = "block";
-        statusEl.textContent = "Syncing... Pending scans: " + pending;
+        statusEl.textContent = "Sending... Pending scans: " + pending;
       } else {
         statusEl.style.display = "block";
-        statusEl.textContent = "All scans saved.";
+        statusEl.textContent = "All scans received by server.";
       }
     }
 
@@ -207,6 +207,23 @@
       document.body.classList.add(className);
       document.getElementById("result").textContent = message;
       setTimeout(() => document.body.classList.remove(className), ms);
+    }
+
+    function showCaptureFeedback() {
+      if (feedbackStepTimer) clearTimeout(feedbackStepTimer);
+      if (feedbackClearTimer) clearTimeout(feedbackClearTimer);
+
+      document.body.classList.remove("detected", "scanned", "error");
+      document.body.classList.add("detected");
+      document.getElementById("result").textContent = "Captured";
+
+      feedbackStepTimer = setTimeout(() => {
+        document.body.classList.remove("detected", "error");
+        document.body.classList.add("scanned");
+        feedbackClearTimer = setTimeout(() => {
+          document.body.classList.remove("scanned");
+        }, CAPTURE_FLASH_MS);
+      }, DETECT_FLASH_MS);
     }
 
     function isValidQr(value) {
