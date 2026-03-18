@@ -57,11 +57,11 @@
     const QR_PREFIX = "26SPExpoGuest-";
     const MAX_QR_LENGTH = 25;
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
+    const HIDE_SYNC_VISUALS = true; // Sync/retry still runs; only UI is hidden.
     const DETECT_FLASH_MS = 90;
     const CAPTURE_FLASH_MS = 280;
     const RECENT_SCAN_COOLDOWN_MS = 1500;
-    const MAX_RETRIES = 6;
-    const BASE_RETRY_DELAY_MS = 300;
+    const RETRY_INTERVAL_MS = 5000;
 
     let scanner;
     let processingQueue = false;
@@ -112,25 +112,13 @@
             continue;
           }
 
-          if (result.retryable) {
-            if (current.retryCount < MAX_RETRIES) {
-              current.retryCount += 1;
-              saveQueue();
-              await sleep(getRetryDelayMs(current.retryCount));
-              continue;
-            }
-
-            // Keep item for eventual consistency, but slow retries after max burst.
-            current.retryCount = 0;
-            saveQueue();
-            await sleep(3000);
-            continue;
-          }
-
-          scanQueue.shift();
+          // Retry forever until success, preserving queue across refresh/close.
+          current.retryCount = (current.retryCount || 0) + 1;
           saveQueue();
-          flashState("error", "Error: " + (result.error || "Failed to save scan."), 1200);
-          await sleep(800);
+          if (!HIDE_SYNC_VISUALS) {
+            flashState("error", "Error: " + (result.error || "Failed to save scan."), 1200);
+          }
+          await sleep(RETRY_INTERVAL_MS);
         }
       } finally {
         processingQueue = false;
@@ -191,8 +179,13 @@
     }
 
     function updateQueueStatus() {
-      const pending = scanQueue.length;
       const statusEl = document.getElementById("processing-status");
+      if (HIDE_SYNC_VISUALS) {
+        statusEl.style.display = "none";
+        return;
+      }
+
+      const pending = scanQueue.length;
       if (pending > 0 || processingQueue) {
         statusEl.style.display = "block";
         statusEl.textContent = "Sending... Pending scans: " + pending;
@@ -215,7 +208,9 @@
 
       document.body.classList.remove("detected", "scanned", "error");
       document.body.classList.add("detected");
-      document.getElementById("result").textContent = "Captured";
+      if (!HIDE_SYNC_VISUALS) {
+        document.getElementById("result").textContent = "Captured";
+      }
 
       feedbackStepTimer = setTimeout(() => {
         document.body.classList.remove("detected", "error");
@@ -228,11 +223,6 @@
 
     function isValidQr(value) {
       return !!value && value.length <= MAX_QR_LENGTH && value.startsWith(QR_PREFIX);
-    }
-
-    function getRetryDelayMs(retryCount) {
-      const jitter = Math.floor(Math.random() * 120);
-      return BASE_RETRY_DELAY_MS * Math.pow(2, retryCount - 1) + jitter;
     }
 
     function sleep(ms) {
