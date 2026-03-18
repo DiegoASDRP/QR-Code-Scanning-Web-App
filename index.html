@@ -37,6 +37,35 @@
       margin: 10px 0;
       font-style: italic;
     }
+
+    /* Larger scanner controls for non-technical users */
+    #reader {
+      width: 100% !important;
+      max-width: 900px !important;
+      margin: 0 auto !important;
+    }
+
+    #reader button {
+      font-size: 24px !important;
+      line-height: 1.2 !important;
+      padding: 18px 28px !important;
+      min-height: 64px !important;
+      min-width: 180px !important;
+      border-radius: 10px !important;
+      margin: 8px !important;
+    }
+
+    #reader select {
+      font-size: 22px !important;
+      padding: 14px 16px !important;
+      min-height: 58px !important;
+      border-radius: 10px !important;
+      margin: 8px !important;
+    }
+
+    #reader a {
+      font-size: 20px !important;
+    }
   </style>
 </head>
 <body>
@@ -236,6 +265,47 @@
       return "rid-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     }
 
+    function trySelectBackCamera() {
+      const reader = document.getElementById("reader");
+      if (!reader) return false;
+
+      const cameraSelect = reader.querySelector("select");
+      if (!cameraSelect || cameraSelect.options.length === 0) return false;
+
+      const backKeywords = ["back", "rear", "environment"];
+      let targetIndex = -1;
+
+      for (let i = 0; i < cameraSelect.options.length; i++) {
+        const label = (cameraSelect.options[i].text || "").toLowerCase();
+        if (backKeywords.some(k => label.includes(k))) {
+          targetIndex = i;
+          break;
+        }
+      }
+
+      if (targetIndex === -1) {
+        targetIndex = cameraSelect.options.length > 1 ? 1 : 0;
+      }
+
+      if (cameraSelect.selectedIndex !== targetIndex) {
+        cameraSelect.selectedIndex = targetIndex;
+        cameraSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      return true;
+    }
+
+    function preferBackCamera() {
+      let attempts = 0;
+      const maxAttempts = 30;
+      const intervalId = setInterval(() => {
+        attempts += 1;
+        if (trySelectBackCamera() || attempts >= maxAttempts) {
+          clearInterval(intervalId);
+        }
+      }, 300);
+    }
+
     scanner = new Html5QrcodeScanner("reader", {
       fps: 20,
       qrbox: { width: 300, height: 300 },
@@ -246,6 +316,7 @@
       showScanSuccessFeedback: false,
     });
     scanner.render(onScanSuccess);
+    preferBackCamera();
     processQueue();
   </script>
 </body>
