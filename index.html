@@ -85,16 +85,10 @@
 
     const QR_PREFIX = "OR-";
     const MAX_QR_LENGTH = 25;
-    /**
-     * Blocked payloads (must stay in sync with Code.gs BLOCKED_QR_VALUES).
-     * Placeholder QR encodes OR-{id}; in URLs that is OR-%7Bid%7D (not OR-%7id%7D).
-     */
-    const BLOCKED_QR_VALUES = [
-      "OR-{id}",
-      "OR-%7Bid%7D",
-      "OR-7id",
-      "OR-%7id%7D",
-    ];
+    /** Exact payloads to reject (typos / URL fragments from bad generator links). */
+    const BLOCKED_QR_VALUES = ["OR-7id", "OR-%7id%7D", "OR-%7Bid%7D"];
+    /** Rejects template placeholder QRs like OR-{id} (broken link used %7i instead of %7B). */
+    const BLOCKED_QR_TEMPLATE = /^OR-\{id\}$/i;
     const BLOCKED_QR_MESSAGE = "This QR code cannot be accepted.";
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const HIDE_SYNC_VISUALS = false; // Sync/retry still runs; only UI is hidden.
@@ -279,23 +273,23 @@
       return !!value && value.length <= MAX_QR_LENGTH && value.startsWith(QR_PREFIX);
     }
 
-    function isBlockedQr(value) {
-      const trimmed = (value || "").trim();
-      const candidates = blockedQrCandidates(trimmed);
-      for (let i = 0; i < candidates.length; i++) {
-        if (BLOCKED_QR_VALUES.indexOf(candidates[i]) !== -1) return true;
-      }
-      return false;
-    }
-
-    /** Raw scan text plus safe decodeURIComponent variant (handles URL-style QR data). */
-    function blockedQrCandidates(trimmed) {
-      const out = [trimmed];
+    function qrBlockCandidates(raw) {
+      const t = (raw || "").trim();
+      if (!t) return [];
+      const out = [t];
       try {
-        const decoded = decodeURIComponent(trimmed);
-        if (decoded && decoded !== trimmed) out.push(decoded);
+        const dec = decodeURIComponent(t.replace(/\+/g, " "));
+        if (dec && dec !== t) out.push(dec);
       } catch (_) {}
       return out;
+    }
+
+    function isBlockedQr(value) {
+      for (const c of qrBlockCandidates(value)) {
+        if (BLOCKED_QR_VALUES.indexOf(c) !== -1) return true;
+        if (BLOCKED_QR_TEMPLATE.test(c)) return true;
+      }
+      return false;
     }
 
     function sleep(ms) {
