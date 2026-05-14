@@ -85,8 +85,16 @@
 
     const QR_PREFIX = "OR-";
     const MAX_QR_LENGTH = 25;
-    /** QR values that must show an error and must not be submitted. */
-    const BLOCKED_QR_VALUES = ["OR-7id", "OR-%7id%7D"];
+    /**
+     * Blocked payloads (must stay in sync with Code.gs BLOCKED_QR_VALUES).
+     * Placeholder QR encodes OR-{id}; in URLs that is OR-%7Bid%7D (not OR-%7id%7D).
+     */
+    const BLOCKED_QR_VALUES = [
+      "OR-{id}",
+      "OR-%7Bid%7D",
+      "OR-7id",
+      "OR-%7id%7D",
+    ];
     const BLOCKED_QR_MESSAGE = "This QR code cannot be accepted.";
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const HIDE_SYNC_VISUALS = false; // Sync/retry still runs; only UI is hidden.
@@ -272,8 +280,22 @@
     }
 
     function isBlockedQr(value) {
-      const v = (value || "").trim();
-      return BLOCKED_QR_VALUES.indexOf(v) !== -1;
+      const trimmed = (value || "").trim();
+      const candidates = blockedQrCandidates(trimmed);
+      for (let i = 0; i < candidates.length; i++) {
+        if (BLOCKED_QR_VALUES.indexOf(candidates[i]) !== -1) return true;
+      }
+      return false;
+    }
+
+    /** Raw scan text plus safe decodeURIComponent variant (handles URL-style QR data). */
+    function blockedQrCandidates(trimmed) {
+      const out = [trimmed];
+      try {
+        const decoded = decodeURIComponent(trimmed);
+        if (decoded && decoded !== trimmed) out.push(decoded);
+      } catch (_) {}
+      return out;
     }
 
     function sleep(ms) {
