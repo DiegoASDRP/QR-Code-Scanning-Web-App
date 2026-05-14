@@ -86,7 +86,7 @@
     const QR_PREFIX = "OR-";
     const MAX_QR_LENGTH = 25;
     /** QR values that must show an error and must not be submitted. */
-    const BLOCKED_QR_VALUES = ["OR-7id"];
+    const BLOCKED_QR_VALUES = ["OR-7id", "OR-%7id%7D"];
     const BLOCKED_QR_MESSAGE = "This QR code cannot be accepted.";
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const HIDE_SYNC_VISUALS = false; // Sync/retry still runs; only UI is hidden.
