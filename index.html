@@ -66,6 +66,16 @@
     #reader a {
       font-size: 20px !important;
     }
+
+    /*
+      html5-qrcode sets corner "border shader" divs to rgb(90, 193, 56) on every successful decode,
+      immediately after the success callback. Html5QrcodeScanner does not pass showScanSuccessFeedback
+      through to that layer, so the viewfinder still flashes green. Neutralize so app feedback (body)
+      is the only success cue.
+    */
+    #reader #qr-shaded-region > div {
+      background-color: #ffffff !important;
+    }
   </style>
 </head>
 <body>
