@@ -85,6 +85,9 @@
 
     const QR_PREFIX = "OR-";
     const MAX_QR_LENGTH = 25;
+    /** QR values that must show an error and must not be submitted. */
+    const BLOCKED_QR_VALUES = ["OR-7id"];
+    const BLOCKED_QR_MESSAGE = "This QR code cannot be accepted.";
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const HIDE_SYNC_VISUALS = false; // Sync/retry still runs; only UI is hidden.
     const DETECT_FLASH_MS = 90;
@@ -107,6 +110,11 @@
 
       if (!isValidQr(decodedText)) {
         flashState("error", "Invalid QR Code format", 1200);
+        return;
+      }
+
+      if (isBlockedQr(decodedText)) {
+        flashState("error", BLOCKED_QR_MESSAGE, 2000);
         return;
       }
 
@@ -136,6 +144,15 @@
           const result = await sendScan(current);
 
           if (result.ok || result.duplicate) {
+            scanQueue.shift();
+            saveQueue();
+            continue;
+          }
+
+          if (result.retryable === false) {
+            if (!HIDE_SYNC_VISUALS) {
+              flashState("error", "Error: " + (result.error || "Failed to save scan."), 2000);
+            }
             scanQueue.shift();
             saveQueue();
             continue;
@@ -252,6 +269,11 @@
 
     function isValidQr(value) {
       return !!value && value.length <= MAX_QR_LENGTH && value.startsWith(QR_PREFIX);
+    }
+
+    function isBlockedQr(value) {
+      const v = (value || "").trim();
+      return BLOCKED_QR_VALUES.indexOf(v) !== -1;
     }
 
     function sleep(ms) {
