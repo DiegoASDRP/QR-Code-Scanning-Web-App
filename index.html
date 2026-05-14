@@ -243,7 +243,19 @@
       }
     }
 
+    function clearCaptureFeedbackTimers() {
+      if (feedbackStepTimer) {
+        clearTimeout(feedbackStepTimer);
+        feedbackStepTimer = null;
+      }
+      if (feedbackClearTimer) {
+        clearTimeout(feedbackClearTimer);
+        feedbackClearTimer = null;
+      }
+    }
+
     function flashState(className, message, ms) {
+      clearCaptureFeedbackTimers();
       document.body.classList.remove("detected", "scanned", "error");
       document.body.classList.add(className);
       document.getElementById("result").textContent = message;
@@ -251,8 +263,7 @@
     }
 
     function showCaptureFeedback() {
-      if (feedbackStepTimer) clearTimeout(feedbackStepTimer);
-      if (feedbackClearTimer) clearTimeout(feedbackClearTimer);
+      clearCaptureFeedbackTimers();
 
       document.body.classList.remove("detected", "scanned", "error");
       document.body.classList.add("detected");
