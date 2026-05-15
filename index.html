@@ -121,6 +121,7 @@
       const lastSeen = lastSeenAtByQr[decodedText] || 0;
       if (now - lastSeen < RECENT_SCAN_COOLDOWN_MS) return;
       lastSeenAtByQr[decodedText] = now;
+      console.log("[scan]", JSON.stringify(decodedText), "valid:", isValidQr(decodedText), "blocked:", isBlockedQr(decodedText));
 
       if (!isValidQr(decodedText)) {
         flashState("error", "Invalid QR Code format", 1200);
@@ -316,6 +317,8 @@
         if (BLOCKED_QR_VALUES.indexOf(c) !== -1) return true;
         if (BLOCKED_QR_TEMPLATE.test(c)) return true;
         if (BLOCKED_SANITIZED_QR_VALUES.indexOf(sanitizeQr(c)) !== -1) return true;
+        // Any OR- code containing URL-encoding (%) or template braces ({}) is a broken placeholder
+        if (/[%{}]/.test(c)) return true;
       }
       return false;
     }
