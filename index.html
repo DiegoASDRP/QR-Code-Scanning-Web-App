@@ -99,6 +99,8 @@
     const BLOCKED_QR_VALUES = ["OR-7id", "OR-%7id%7D", "OR-%7Bid%7D"];
     /** Rejects template placeholder QRs like OR-{id} (broken link used %7i instead of %7B). */
     const BLOCKED_QR_TEMPLATE = /^OR-\{id\}$/i;
+    /** After sanitization (stripping non-word/dot/dash chars), these must also be rejected. Mirrors Code.gs. */
+    const BLOCKED_SANITIZED_QR_VALUES = ["OR-7id"];
     const BLOCKED_QR_MESSAGE = "This QR code cannot be accepted.";
     const QUEUE_STORAGE_KEY = "qr_scan_queue_v1";
     const HIDE_SYNC_VISUALS = false; // Sync/retry still runs; only UI is hidden.
@@ -305,10 +307,15 @@
       return out;
     }
 
+    function sanitizeQr(value) {
+      return (value || "").replace(/[^\w\s.-]/g, "");
+    }
+
     function isBlockedQr(value) {
       for (const c of qrBlockCandidates(value)) {
         if (BLOCKED_QR_VALUES.indexOf(c) !== -1) return true;
         if (BLOCKED_QR_TEMPLATE.test(c)) return true;
+        if (BLOCKED_SANITIZED_QR_VALUES.indexOf(sanitizeQr(c)) !== -1) return true;
       }
       return false;
     }
