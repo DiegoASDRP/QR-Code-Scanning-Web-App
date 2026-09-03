@@ -87,13 +87,13 @@
   <script>
     // ── CONFIG ─────────────────────────────────────────────────────────────────
     // GAS web app URL (redeploy after updating Code.gs).
-    const GAS_URL = "https://script.google.com/a/macros/asdrp.org/s/AKfycbxTankeFXSxvSgf_niS5IopFY_DErP3UJThjALuYNTPhMxOf8U2CaxuxTE-7KYZCy6JAA/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzAg9_hWbbakZUzTJxXQmYXNN5XsI9zLYIB1LvlSQzlQ4miAXVH55UiRedFLGAICjTd/exec";
     // A shared secret — must match API_KEY in Code.gs.
     // Not invisible to determined users, but blocks casual/automated abuse.
     const API_KEY = "CENSORED_KEY"; // e.g. a random 32-char string
     // ──────────────────────────────────────────────────────────────────────────
 
-    const QR_PREFIX = "OR-";
+    const QR_PREFIX = "26SUExpoGuest-";
     const MAX_QR_LENGTH = 25;
     /** Exact payloads to reject (typos / URL fragments from bad generator links). */
     const BLOCKED_QR_VALUES = ["OR-7id", "OR-%7id%7D", "OR-%7Bid%7D"];
